@@ -28,7 +28,7 @@ jobs:
         env:
           TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
           TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
-          SKIP_LIFECYCLE_NOTIFY: '1'
+          SKIP_LIFECYCLE_NOTIFY: ${{ github.event_name == 'schedule' && '1' || '' }}
         run: |
           mkdir -p states
           timeout --signal=SIGTERM --kill-after=15 290 python3 monitor.py || true
