@@ -32,7 +32,10 @@ TELEGRAM_CHAT_ID = os.environ.get("TELEGRAM_CHAT_ID", "")
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 LOG_PATH = os.path.join(BASE_DIR, "monitor.log")
 STATE_DIR = os.path.join(BASE_DIR, "states")
+LAST_REPORT_PATH = os.path.join(STATE_DIR, "_last_report.txt")
 os.makedirs(STATE_DIR, exist_ok=True)
+
+HOURLY_REPORT_INTERVAL = 3600
 
 CURL_HEADERS = [
     "-A", "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
@@ -127,6 +130,32 @@ def write_state(target_id: str, state: str) -> None:
         f.write(state)
 
 
+def read_last_report_time() -> float:
+    try:
+        with open(LAST_REPORT_PATH) as f:
+            return float(f.read().strip())
+    except (FileNotFoundError, ValueError):
+        return 0.0
+
+
+def write_last_report_time(ts: float) -> None:
+    with open(LAST_REPORT_PATH, "w") as f:
+        f.write(str(ts))
+
+
+def send_hourly_report(last_states: dict) -> None:
+    state_lines = [
+        f"  • {t['name']}: <b>{last_states.get(t['id']) or '(none)'}</b>"
+        for t in TARGETS
+    ]
+    msg = (
+        "📊 <b>c- 모니터링 리포트</b>\n"
+        "• 모니터링: <b>실행 중</b>\n"
+        "• 현재 상태:\n" + "\n".join(state_lines)
+    )
+    send_telegram(msg)
+
+
 _running = True
 
 
@@ -182,6 +211,7 @@ def main():
 
     last_states = {t["id"]: read_last_state(t["id"]) for t in TARGETS}
     consecutive_errors = {t["id"]: 0 for t in TARGETS}
+    last_report_time = read_last_report_time() or time.time()
 
     while _running:
         for target in TARGETS:
@@ -199,6 +229,11 @@ def main():
             # small pause between targets in the same cycle
             if _running:
                 time.sleep(random.uniform(2, 4))
+
+        if time.time() - last_report_time >= HOURLY_REPORT_INTERVAL:
+            send_hourly_report(last_states)
+            last_report_time = time.time()
+            write_last_report_time(last_report_time)
 
         delay = random.uniform(10, 20)
         end = time.time() + delay
